@@ -1,0 +1,12 @@
+##参数格式 [info key value] 
+[参数]
+[src]
+info SrcHost  10.10.30.16
+info SrcPort  33100
+info SrcUser  root
+info SrcPassword letsg0
+[dst]
+info DstHost  10.10.30.16
+info DstPort 33101
+info DstUser root
+info DstPassword letsg0
