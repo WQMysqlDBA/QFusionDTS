@@ -58,15 +58,21 @@ fi
 #echo -e "## 数据库连接信息: \n"
 #echo -e "username: $username \npassword: $passwd \nhost: $host \nport: $port"
 ##数据库链接
-mysql_conn="mysql -u$username -p$passwd -h$host -P$port"
+mysql_conn="mysql  -u$username -p$passwd -h$host -P$port  "
 $mysql_conn -e "\s">/dev/null 2>&1
 if [ $? -ne 0 ];then
     echo "[Error]: ......数据库链接失败"
     exit 0
 fi
 
+
+$mysql_conn -e "set global sql_mode = 'ALLOW_INVALID_DATES,NO_AUTO_CREATE_USER';"
+
+
 #db=$($mysql_conn -e "show databases;" |grep -Ev "Database|mysql|performance_schema|sys|information_schema"|xargs)
 db=$(cat SrcdbName)
+foreign_key_checks=$(${mysql_conn} 2>/dev/null  -e "show variables like 'foreign_key_checks'"|grep -v Variable_name |awk '{print $2}')
+echo "foreign_key_checks: $foreign_key_checks"
 for i in $db
 do
     echo "# 数据库${i}文件"
@@ -76,9 +82,9 @@ do
 
     for j1 in $(ls ${backupdatadir} | grep "${i}-schema-create.sql")
     do    
-        ${mysql_conn} <${backupdatadir}/${j1}
+        ${mysql_conn} 2>/dev/null <${backupdatadir}/${j1}
         if [ $? -eq 0 ];then
-            echo -e "\033[33m测试创建库${i}\033[0m成功"
+            echo -e "\033[33m测试创建库${i}\033[0m成功">>/dev/null
         else
             echo -e "\033[33m测试创建库${i}\033[0m失败"
         fi
@@ -86,22 +92,24 @@ do
 
     echo "## 表结构文件"
     ls ${backupdatadir} | grep "${i}\."|grep "schema.sql" >>/dev/null
-    
     for j in $(ls ${backupdatadir} | grep "${i}\."|grep "schema.sql")
-
     #echo -e "\033[33m导入测试创建表\033[0m" 
     do
         #change table structure to InnoDB
         sed -i -e "s/MyISAM/InnoDB/g" -e "s/MEMORY/InnoDB/g"  -e "s/ROW_FORMAT=FIXED//g" ${backupdatadir}/$j #&& echo "修改${i}.${j}"元数据信息成功 
-        
-        ${mysql_conn} -D ${i} <${backupdatadir}/${j}
+        ## 检查外键是否过滤
+        ${mysql_conn} 2>/dev/null -e "set global foreign_key_checks=0"
+        ${mysql_conn} 2>/dev/null -D ${i} <${backupdatadir}/${j}
         if [ $? -eq 0 ];then
             echo -e "\033[33m表文件${j}写入成功\033[0m" >>/dev/null
         else
-            echo -e "\033[33m表文件${j}写入失败\033[0m"
+            echo -e "\033[33m表文件${j}写入失败\033[0m,创建表不通过，请验证！！！"
+            ${mysql_conn} 2>/dev/null -e"set global foreign_key_checks=$foreign_key_checks"
+            exit 0
         fi
     done
-
     echo -e "\n\n"
     sleep 1
 done
+
+${mysql_conn} 2>/dev/null -e"set global foreign_key_checks=$foreign_key_checks"
