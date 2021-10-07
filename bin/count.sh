@@ -21,7 +21,13 @@ function connect_info(){
 }
 
 function count(){
-    for i in `cat ../srcdb_info/db_info |grep InnoDB|grep "[0-9]\."|awk '{print $1 "." $2}'|head -n 10 | tail -n +5`
+    if [ `cat ../srcdb_info/db_info |grep InnoDB|grep "[0-9]\."|awk '{print $1 "." $2}'|wc -l` -lt 10 ] ;then
+        tables=`cat ../srcdb_info/db_info |grep InnoDB|grep "[0-9]\."|awk '{print $1 "." $2}'`
+    else
+        tables=`cat ../srcdb_info/db_info |grep InnoDB|grep "[0-9]\."|awk '{print $1 "." $2}'|head -n 10 | tail -n +5`
+    fi
+
+    for i in $tables
     do
         echo $i
         a1=`$src_conn 2>/dev/null -e "select count(*) from $i"|grep -v count`
@@ -35,6 +41,7 @@ function count(){
             exit 0
         fi
     done
+    echo "数据校验PASS"
 }
 
 connect_info

@@ -65,6 +65,7 @@ function collectsrcVersion(){
 }
 function collectvar(){
 #备注:目前还只是根据主库判断的，后面最好是根据主从库各自的配置进行对比，作为优化项
+    src_sql_mode=$($src_conn -e "show variables like 'sql_mode';" |grep -v Variable_name|awk '{print $2}')
     gtid_mode=$($src_conn -e "show variables like 'gtid_mode';" |grep -v Variable_name|awk '{print $2}')
     log_slave_updates=$($src_conn -e "show variables like 'log_slave_updates';" |grep -v Variable_name|awk '{print $2}')
 
@@ -79,6 +80,12 @@ function collectvar(){
         #exit 0
     fi
     sleep 1
+}
+function setdstsqlmode(){
+    $dst_conn -e "set global sql_mode = \"$src_sql_mode\";"
+    if [ $? -eq 0 ];then
+        echo "success set dst instance SQL_MODE = \"$src_sql_mode\""
+    fi
 }
 function collectsrc(){
 
@@ -281,6 +288,7 @@ do
         userauth
         ;;
         5)
+        setdstsqlmode
         mycheck
         ;;
         6)

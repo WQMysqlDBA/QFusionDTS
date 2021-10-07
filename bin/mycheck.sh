@@ -66,7 +66,6 @@ if [ $? -ne 0 ];then
 fi
 
 
-$mysql_conn -e "set global sql_mode = 'ALLOW_INVALID_DATES,NO_AUTO_CREATE_USER';"
 
 
 #db=$($mysql_conn -e "show databases;" |grep -Ev "Database|mysql|performance_schema|sys|information_schema"|xargs)
@@ -104,7 +103,7 @@ do
             echo -e "\033[33m表文件${j}写入成功\033[0m" >>/dev/null
         else
             echo -e "\033[33m表文件${j}写入失败\033[0m,创建表不通过，请验证！！！"
-            ${mysql_conn} 2>/dev/null -e"set global foreign_key_checks=$foreign_key_checks"
+            ${mysql_conn} 2&>1 /dev/null -e"set global foreign_key_checks=$foreign_key_checks"
             exit 0
         fi
     done
