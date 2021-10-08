@@ -83,11 +83,17 @@ fi
 #     done
 
 # done
-for i in \'qfsys\'@\'%\' \'repl\'@\'%\' \'root\'@\'%\'   \'heartbeat\'@\'localhost\' \'mysql.infoschema\'@\'localhost\' \'mysql.session\'@\'localhost\' \'mysql.sys\'@\'localhost\' \'root\'@\'localhost\'
-do
-    sed -i "/${i}/d"  ../srcdb_info/user_file
-    sed -i "/${i}/d"  ../srcdb_info/privilege_file
-done
+
+
+
+
+# for i in \'qfsys\'@\'%\' \'repl\'@\'%\' \'root\'@\'%\'   \'heartbeat\'@\'localhost\' \'mysql.infoschema\'@\'localhost\' \'mysql.session\'@\'localhost\' \'mysql.sys\'@\'localhost\' \'root\'@\'localhost\'
+# do
+#     sed -i "/${i}/d"  ../srcdb_info/user_file
+#     sed -i "/${i}/d"  ../srcdb_info/privilege_file
+# done
+
+
 
 $mysql_conn <../srcdb_info/user_file
 if [  $? -eq 0 ];then
@@ -96,12 +102,23 @@ else
     echo "创建用户和授权失败或者部分失败，登陆目标库验证"
 fi
 
-$mysql_conn <../srcdb_info/privilege_file
-if [  $? -eq 0 ];then
-    echo "创建用户和授权成功，登陆目标库验证"
-else
-    echo "创建用户和授权失败或者部分失败，登陆目标库验证"
+# $mysql_conn <../srcdb_info/privilege_file
+# if [  $? -eq 0 ];then
+#     echo "创建用户和授权成功，登陆目标库验证"
+# else
+#     echo "创建用户和授权失败或者部分失败，登陆目标库验证"
+# fi
+
+
+cat ../srcdb_info/privilege_file |while read line
+do
+    $mysql_conn -e "$line"
+    if [  $? -eq 0 ];then
+        echo "执行$line授权成功，登陆目标库验证"
+    else
+        echo "执行$line授权失败，登陆目标库验证"
 fi
+done
 
 
 

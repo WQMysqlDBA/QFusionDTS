@@ -1,10 +1,10 @@
 ##参数格式 [info key value] 
 [参数]
 [src]
-info SrcHost  10.10.30.172
-info SrcPort  33100
-info SrcUser  root
-info SrcPassword letsg0
+info SrcHost  10.10.40.178
+info SrcPort  30530
+info SrcUser  ch
+info SrcPassword Chen1997@
 [dst]
 info DstHost  10.10.30.172
 info DstPort 33102
