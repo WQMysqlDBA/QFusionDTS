@@ -104,6 +104,7 @@ do
         else
             echo -e "\033[33m表文件${j}写入失败\033[0m,创建表不通过，请验证！！！"
             ${mysql_conn} 2&>1 /dev/null -e"set global foreign_key_checks=$foreign_key_checks"
+            echo "$mysql_conn"
             exit 0
         fi
     done

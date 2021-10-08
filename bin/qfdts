@@ -1,7 +1,5 @@
 #1/bin/bash
 
-
-
 ##color
 green="\033[32m"
 yello="\033[33m"
@@ -10,172 +8,177 @@ default="\033[0m"
 
 CONNECT_INFO="./CONNECT_INFO"
 
-function connect_info(){
-    SrcHost=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep SrcHost|awk '{print $3}')
-    SrcPort=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep SrcPort|awk '{print $3}')
-    SrcUser=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep SrcUser|awk '{print $3}')
-    SrcPassword=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep SrcPassword|awk '{print $3}')
+function connect_info() {
+  SrcHost=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep SrcHost | awk '{print $3}')
+  SrcPort=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep SrcPort | awk '{print $3}')
+  SrcUser=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep SrcUser | awk '{print $3}')
+  SrcPassword=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep SrcPassword | awk '{print $3}')
 
-    DstHost=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep DstHost|awk '{print $3}')
-    DstPort=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep DstPort|awk '{print $3}')
-    DstUser=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep DstUser|awk '{print $3}')
-    DstPassword=$(cat $CONNECT_INFO |grep -v ^#|grep -w info |grep DstPassword|awk '{print $3}')
-    
+  DstHost=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep DstHost | awk '{print $3}')
+  DstPort=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep DstPort | awk '{print $3}')
+  DstUser=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep DstUser | awk '{print $3}')
+  DstPassword=$(cat $CONNECT_INFO | grep -v ^# | grep -w info | grep DstPassword | awk '{print $3}')
 
-    echo -e "填写的配置信息如下: \n[上游数据库]\n上游库host: $SrcHost \n上游库Port: $SrcPort \n上游库连接用户: $SrcUser \n上游库密码: $SrcPassword \n\n[下游库]\n下游库host: $DstHost \n下游库Port: $DstPort \n下游库User: $DstUser \n下游库密码: $DstPassword"
-    src_conn="mysql -h$SrcHost -u$SrcUser -p$SrcPassword -P$SrcPort"
-    dst_conn="mysql -h$DstHost -u$DstUser -p$DstPassword -P$DstPort"
-    
+  echo -e "填写的配置信息如下: \n[上游数据库]\n上游库host: $SrcHost \n上游库Port: $SrcPort \n上游库连接用户: $SrcUser \n上游库密码: $SrcPassword \n\n[下游库]\n下游库host: $DstHost \n下游库Port: $DstPort \n下游库User: $DstUser \n下游库密码: $DstPassword"
+  src_conn="mysql -h$SrcHost -u$SrcUser -p$SrcPassword -P$SrcPort"
+  dst_conn="mysql -h$DstHost -u$DstUser -p$DstPassword -P$DstPort"
+
 }
 
-function shuru(){
-    read -p "$1" "$2"    
+function shuru() {
+  read -p "$1" "$2"
 }
-function ifexit(){
-    flag=$1
-    if [[ "$flag" == "N"  ]] || [[ "$flag" == "n" ]];
-    then
-        echo "choose exit,return 0"
-        exit 0
-    elif [[ "$flag" == "Y"  ]] || [[ "$flag" == "y" ]];
-    then
-        echo "input $flag" >>/dev/null
-    else
-        echo "输入值不符合规则，退出"
-        exit 0
-    fi
-}
-
-function install(){
-    
-    shuru "[提示]: 步骤【1】准备安装package,输入 Y/n  " flag
-    ifexit $flag
-
-    bash install.sh
-
-    if [ $? -ne 0 ];then
+function ifexit() {
+  flag=$1
+  if [[ "$flag" == "N" ]] || [[ "$flag" == "n" ]]; then
+    echo "choose exit,return 0"
     exit 0
-    fi
-}
-
-function collectsrcVersion(){
-    SRC_MYSQL_VERSION=$($src_conn -e "select version()"|grep -v version|awk -F '.' '{print $1 "." $2 }')
-    DST_MYSQL_VERSION=$($dst_conn -e "select version()"|grep -v version|awk -F '.' '{print $1 "." $2 }')
-    echo -e "上游数据库版本: $SRC_MYSQL_VERSION \n下游数据库版本: $DST_MYSQL_VERSION "
-}
-function collectvar(){
-#备注:目前还只是根据主库判断的，后面最好是根据主从库各自的配置进行对比，作为优化项
-    src_sql_mode=$($src_conn -e "show variables like 'sql_mode';" |grep -v Variable_name|awk '{print $2}')
-    gtid_mode=$($src_conn -e "show variables like 'gtid_mode';" |grep -v Variable_name|awk '{print $2}')
-    log_slave_updates=$($src_conn -e "show variables like 'log_slave_updates';" |grep -v Variable_name|awk '{print $2}')
-
-    if [ $gtid_mode == "ON" ] || [ $gtid_mode == "on" ];then
-        boolgtid=1
-    else
-        boolgtid=0
-    fi
-
-    if [  $log_slave_updates == "OFF" ] || [  $log_slave_updates == "off" ];then
-        echo "当前源库所有update不记录binlog，无法完成预期目标，退出。"
-        #exit 0
-    fi
-    sleep 1
-}
-function setdstsqlmode(){
-    $dst_conn -e "set global sql_mode = \"$src_sql_mode\";"
-    if [ $? -eq 0 ];then
-        echo "success set dst instance SQL_MODE = \"$src_sql_mode\""
-    fi
-}
-function collectsrc(){
-
-    shuru "[提示]: 步骤【2】准备收集主库信息，是否继续？输入 Y/n  " flag
-    ifexit $flag
-    bash collectstatistics.sh --host $SrcHost --user $SrcUser --passwd $SrcPassword --port $SrcPort --role src
-    if [ $? -ne 0 ];then
+  elif [[ "$flag" == "Y" ]] || [[ "$flag" == "y" ]]; then
+    echo "input $flag" >>/dev/null
+  else
+    echo "输入值不符合规则，退出"
     exit 0
-    fi
+  fi
 }
 
-function dump(){
-    shuru "[提示]: 步骤【3】准备开始备份数据,是否继续？输入 Y/n  " flag
-    ifexit $flag
+function install() {
 
-    shuru "[获取参数]: 根据提示建议或自己自定并发线程数" thread
-    bash dump.sh -h $SrcHost -u $SrcUser -p $SrcPassword -t $thread -P $SrcPort
-    if [ $? -ne 0 ];then
+  shuru "[提示]: 步骤【1】准备安装package,输入 Y/n  " flag
+  ifexit $flag
+
+  bash install.sh
+
+  if [ $? -ne 0 ]; then
+    exit 0
+  fi
+}
+function test_conn() {
+  $src_conn -e "select 1" >/dev/null
+  if [ $? -ne 0 ]; then
+    echo "连接到src host失败"
+    exit 1
+  fi
+  $dst_conn -e "select 1" >/dev/null
+  if [ $? -ne 0 ]; then
+    echo "连接到dst host失败"
+    exit 1
+  fi
+}
+function collectsrcVersion() {
+  SRC_MYSQL_VERSION=$($src_conn -e "select version()" | grep -v version | awk -F '.' '{print $1 "." $2 }')
+  DST_MYSQL_VERSION=$($dst_conn -e "select version()" | grep -v version | awk -F '.' '{print $1 "." $2 }')
+  echo -e "上游数据库版本: $SRC_MYSQL_VERSION \n下游数据库版本: $DST_MYSQL_VERSION "
+}
+function collectvar() {
+  #备注:目前还只是根据主库判断的，后面最好是根据主从库各自的配置进行对比，作为优化项
+  src_sql_mode=$($src_conn -e "show variables like 'sql_mode';" | grep -v Variable_name | awk '{print $2}')
+  gtid_mode=$($src_conn -e "show variables like 'gtid_mode';" | grep -v Variable_name | awk '{print $2}')
+  log_slave_updates=$($src_conn -e "show variables like 'log_slave_updates';" | grep -v Variable_name | awk '{print $2}')
+
+  if [ $gtid_mode == "ON" ] || [ $gtid_mode == "on" ]; then
+    boolgtid=1
+  else
+    boolgtid=0
+  fi
+
+  if [ $log_slave_updates == "OFF" ] || [ $log_slave_updates == "off" ]; then
+    echo "当前源库所有update不记录binlog，无法完成预期目标，退出。"
+    #exit 0
+  fi
+  sleep 1
+}
+function setdstsqlmode() {
+  $dst_conn -e "set global sql_mode = \"$src_sql_mode\";"
+  if [ $? -eq 0 ]; then
+    echo "success set dst instance SQL_MODE = \"$src_sql_mode\""
+  fi
+}
+function collectsrc() {
+
+  shuru "[提示]: 步骤【2】准备收集主库信息，是否继续？输入 Y/n  " flag
+  ifexit $flag
+  bash collectstatistics.sh --host $SrcHost --user $SrcUser --passwd $SrcPassword --port $SrcPort --role src --srcver $SRC_MYSQL_VERSION --dstver $DST_MYSQL_VERSION
+  if [ $? -ne 0 ]; then
+    exit 0
+  fi
+}
+
+function dump() {
+  shuru "[提示]: 步骤【3】准备开始备份数据,是否继续？输入 Y/n  " flag
+  ifexit $flag
+
+  shuru "[获取参数]: 根据提示建议或自己自定并发线程数" thread
+  bash dump.sh -h $SrcHost -u $SrcUser -p $SrcPassword -t $thread -P $SrcPort
+  if [ $? -ne 0 ]; then
     echo "备份失败 执行 bash dump.sh -h $SrcHost -u $SrcUser -p $SrcPassword -t $thread -P $SrcPort 查看报错"
     exit 0
-    else
+  else
     echo -e "$green [Info]: $default 备份完成"
-    fi
+  fi
 }
-function userauth(){
-    ##userauth
-    shuru "[提示]: 步骤【4】创建用户认证，是否继续 ？ 输入 Y/n  " flag
-    ifexit $flag
+function userauth() {
+  ##userauth
+  shuru "[提示]: 步骤【4】创建用户认证，是否继续 ？ 输入 Y/n  " flag
+  ifexit $flag
 
-    $dst_conn -e "select 1">/dev/null 2>&1
-    if [ $? -ne 0 ];then
-        echo "[Error]: ......数据库链接失败"
-        exit 0
-    fi
-    bash userauth.sh -h $DstHost -u$DstUser -p$DstPassword -P$DstPort
-}
-
-function mycheck(){
-    ##check the media sql file and modify it
-    shuru "[提示]: 步骤【5】表文件验证，是否继续 ？输入 Y/n  " flag
-    ifexit $flag
-    bash  modify.sh --host $DstHost --user $DstUser --passwd $DstPassword --port $DstPort
-}
-
-function loader(){
-    shuru "[提示]: 步骤【6】准备往目标库loader数据，是否继续? 输入Y/n  " flag
-    ifexit $flag
-    shuru "[获取参数]: 根据QFusion中，MySQL实例的cpu个数来配置并发线程数" loadthread
-    myloader --user $DstUser --password $DstPassword -h $DstHost -P $DstPort  --directory ../backup/ --overwrite-tables --verbose 2 --threads $loadthread
-}
-
-function collectdst(){
-    shuru "[提示]: 步骤【7】准备收集目标库信息，是否继续？输入 Y/n  " flag
-    ifexit $flag
-
-    bash collectstatistics.sh --host $DstHost --user $DstUser --passwd $DstPassword --port $DstPort --role dst
-    if [ $? -ne 0 ];then
+  $dst_conn -e "select 1" >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "[Error]: ......数据库链接失败"
     exit 0
-    fi
+  fi
+  bash userauth.sh -h $DstHost -u$DstUser -p$DstPassword -P$DstPort
 }
 
+function mycheck() {
+  ##check the media sql file and modify it
+  shuru "[提示]: 步骤【5】表文件验证，是否继续 ？输入 Y/n  " flag
+  ifexit $flag
+  bash modify.sh --host $DstHost --user $DstUser --passwd $DstPassword --port $DstPort
+}
 
+function loader() {
+  shuru "[提示]: 步骤【6】准备往目标库loader数据，是否继续? 输入Y/n  " flag
+  ifexit $flag
+  shuru "[获取参数]: 根据QFusion中，MySQL实例的cpu个数来配置并发线程数" loadthread
+  myloader --user $DstUser --password $DstPassword -h $DstHost -P $DstPort --directory ../backup/ --overwrite-tables --verbose 2 --threads $loadthread
+}
 
+function collectdst() {
+  shuru "[提示]: 步骤【7】准备收集目标库信息，是否继续？输入 Y/n  " flag
+  ifexit $flag
 
-function MS(){
-    shuru "[提示]: 步骤【8】准备搭建从目标库到源库的主从关系（默认为异步复制），注意，如果目标库是qfusion,必须注意将qfusion mysql实例停一下写心跳表，是否继续？ 输入Y/n  " flag
-    ifexit $flag
-    collectvar
-    $dst_conn -e "stop slave;"
-    $dst_conn -e "reset slave;"
-    if [ $boolgtid -eq 1 ];then 
-        #StartGtid的获取经历如下三个版本
-        #StartGtid=$(cat ../backup/metadata|grep GTID|awk -F ':' '{print $2":"$3}')
-        #StartGtid=$(cat ../backup/metadata|grep -v Started|grep -v Finished|grep -v "SHOW MASTER STATUS"|grep -v "Log:"|grep -v "Pos"|tr "\n" " "|awk -F "GTID:" '{print $2}'|sed s/[[:space:]]//g)
-        StartGtid=$(cat ../backup/metadata|grep -v Started|grep -v Finished|grep -v "SHOW MASTER STATUS"|grep -v "Log:"|grep -v "Pos"|tr "\n" " "|awk -F "GTID:" '{print $2}'|awk -F "SHOW SLAVE STATUS" '{print$1}'|sed s/[[:space:]]//g)
-        echo "[Info]: 备份开始时刻gtid: $StartGtid"
+  bash collectstatistics.sh --host $DstHost --user $DstUser --passwd $DstPassword --port $DstPort --role dst --srcver $SRC_MYSQL_VERSION --dstver $DST_MYSQL_VERSION
+  if [ $? -ne 0 ]; then
+    exit 0
+  fi
+}
 
-        $dst_conn -e "reset master;"
-        $dst_conn -e "set global gtid_purged='${StartGtid}'"
-        mssql="CHANGE MASTER TO  \
+function MS() {
+  shuru "[提示]: 步骤【8】准备搭建从目标库到源库的主从关系（默认为异步复制）。复制关系中会过滤掉 mysql,sys,information_schema,performance_schema 这几个系统数据库。注意，如果目标库是qfusion,必须注意将qfusion mysql实例停一下写心跳表，是否继续？ 输入Y/n  " flag
+  ifexit $flag
+  collectvar
+  $dst_conn -e "stop slave;"
+  $dst_conn -e "reset slave;"
+  if [ $boolgtid -eq 1 ]; then
+    #StartGtid的获取经历如下三个版本
+    #StartGtid=$(cat ../backup/metadata|grep GTID|awk -F ':' '{print $2":"$3}')
+    #StartGtid=$(cat ../backup/metadata|grep -v Started|grep -v Finished|grep -v "SHOW MASTER STATUS"|grep -v "Log:"|grep -v "Pos"|tr "\n" " "|awk -F "GTID:" '{print $2}'|sed s/[[:space:]]//g)
+    StartGtid=$(cat ../backup/metadata | grep -v Started | grep -v Finished | grep -v "SHOW MASTER STATUS" | grep -v "Log:" | grep -v "Pos" | tr "\n" " " | awk -F "GTID:" '{print $2}' | awk -F "SHOW SLAVE STATUS" '{print$1}' | sed s/[[:space:]]//g)
+    echo "[Info]: 备份开始时刻gtid: $StartGtid"
+
+    $dst_conn -e "reset master;"
+    $dst_conn -e "set global gtid_purged='${StartGtid}'"
+    mssql="CHANGE MASTER TO  \
         MASTER_HOST='${SrcHost}', \
         MASTER_USER='${SrcUser}',  \
         MASTER_PASSWORD='${SrcPassword}', \
         MASTER_PORT=${SrcPort},  \
         MASTER_AUTO_POSITION=1,  \
         MASTER_CONNECT_RETRY=10;"
-    elif [ $boolgtid -eq 0 ];then
-        binlogfile=$(cat ../backup/metadata |grep Log:|awk '{print $2}')
-        pos=$(cat ../backup/metadata |grep Pos:|awk '{print $2}')
-        mssql="CHANGE MASTER TO  \
+  elif [ $boolgtid -eq 0 ]; then
+    binlogfile=$(cat ../backup/metadata | grep Log: | awk '{print $2}')
+    pos=$(cat ../backup/metadata | grep Pos: | awk '{print $2}')
+    mssql="CHANGE MASTER TO  \
         MASTER_HOST='${SrcHost}', \
         MASTER_USER='${SrcUser}',  \
         MASTER_PASSWORD='${SrcPassword}', \
@@ -183,111 +186,138 @@ function MS(){
         MASTER_LOG_FILE='$binlogfile', \
         MASTER_LOG_POS=$pos,\
         MASTER_CONNECT_RETRY=10;"
-        $dst_conn -e "change master to MASTER_AUTO_POSITION=0;"  
-    fi
-    $dst_conn -e "$mssql"
-    ## 新增过滤某个数据库同步
-    $dst_conn -e "CHANGE REPLICATION FILTER REPLICATE_WILD_IGNORE_TABLE = ('mysql.%');"
-    $dst_conn -e "start slave"
-   
-    echo "开始配置主从，并检查数据同步状态"
-    sleep 2
-    iosts=$($dst_conn -e "show slave status \G"|grep -w Slave_IO_Running|awk '{print $2}')
-    sqlsts=$($dst_conn -e "show slave status \G"|grep -w Slave_SQL_Running|awk '{print $2}')
+    $dst_conn -e "change master to MASTER_AUTO_POSITION=0;"
+  fi
+  $dst_conn -e "$mssql"
+  ## 新增过滤某个数据库同步
+  $dst_conn -e "CHANGE REPLICATION FILTER REPLICATE_WILD_IGNORE_TABLE = ('mysql.%','sys.%','information_schema.%','performance_schema.%');"
+  $dst_conn -e "start slave"
 
-    if [ $iosts == "Yes" ] && [ $sqlsts == "Yes" ];then
-        echo "主从配置成功"
-    else
-        echo "主从配置失败"
-    fi
-        
+  echo "开始配置主从，并检查数据同步状态"
+  sleep 2
+  iosts=$($dst_conn -e "show slave status \G" | grep -w Slave_IO_Running | awk '{print $2}')
+  sqlsts=$($dst_conn -e "show slave status \G" | grep -w Slave_SQL_Running | awk '{print $2}')
+
+  if [ $iosts == "Yes" ] && [ $sqlsts == "Yes" ]; then
+    echo "主从配置成功"
+  else
+    echo "主从配置失败"
+  fi
+
 }
-function MS_STATUS(){
+function MS_STATUS() {
 
-    iosts=$($dst_conn -e "show slave status \G"|grep -w Slave_IO_Running|awk '{print $2}')
-    sqlsts=$($dst_conn -e "show slave status \G"|grep -w Slave_SQL_Running|awk '{print $2}')
+  iosts=$($dst_conn -e "show slave status \G" | grep -w Slave_IO_Running | awk '{print $2}')
+  sqlsts=$($dst_conn -e "show slave status \G" | grep -w Slave_SQL_Running | awk '{print $2}')
 
-    if [ $iosts == "Yes" ] && [ $sqlsts == "Yes" ];then
-        echo -e "$green 主从同步状态正常 $default"
-    else
-        echo -e "$yello 主从同步状态异常 \n$default IO线程运行状态: $iosts \nSQL线程运行状态: $sqlsts"
-        exit 1
-    fi
+  if [ $iosts == "Yes" ] && [ $sqlsts == "Yes" ]; then
+    echo -e "$green 主从同步状态正常 $default"
+  else
+    echo -e "$yello 主从同步状态异常 \n$default IO线程运行状态: $iosts \nSQL线程运行状态: $sqlsts"
+    exit 1
+  fi
 }
-function calculate_ms_time(){
-    MS_STATUS
-    ##### 这里根据show slave status\G 里面的到的事务差来预估剩余追赶数据的时间
+function calculate_ms_time() {
+  MS_STATUS
+  shuru "[提示]: 步骤【10】预估剩余追平数据的时间,是否继续？输入 Y/n  " flag
+  ifexit $flag
+  ##### 这里根据show slave status\G 里面的到的事务差来预估剩余追赶数据的时间
+  Master_UUID=$($dst_conn -e "show slave status\G" | grep Master_UUID | awk '{print $2}')
+  j=0
+  for i in $($dst_conn -e "show slave status\G" | grep $Master_UUID | grep -v Master_UUID); do
+    gtid[j]=$(echo $i | awk -F ':' '{print $2}' | awk -F '-' '{print $2}')
+    ((j++))
+
+  done
+
+  #Retrieved_Gtid_Set=${gtid[1]}
+  Executed_Gtid_Set1=${gtid[2]}
+
+  sleep 1
+  Master_UUID=$($dst_conn -e "show slave status\G" | grep Master_UUID | awk '{print $2}')
+  j=0
+  for i in $($dst_conn 2>>/dev/null -e "show slave status\G" | grep $Master_UUID | grep -v Master_UUID); do
+    gtid[$j]=$(echo $i | awk -F ':' '{print $2}' | awk -F '-' '{print $2}')
+    ((j++))
+
+  done
+  Retrieved_Gtid_Set=${gtid[1]}
+  Executed_Gtid_Set2=${gtid[2]}
+  sql="select(($Retrieved_Gtid_Set - $Executed_Gtid_Set2)/($Executed_Gtid_Set2 - $Executed_Gtid_Set1))"
+  $dst_conn -e "$sql"
+  echo $dst_conn
+
 }
 
-function main()
-{
-    echo -e "工具名称: qfusion-dts工具 \nversion: v2.0 \nauther: hao.chen@woqutech.com\n适用版本 mysql5.6-->5.7-->8.0之间的同版本或者升级版本上云,暂不支持降级上云(降级？这不是愚蠢吗？)"
-    echo -e "将源库目标库的连接信息,参考CONNECT_INFO文件中的参数格式，填写到配置文件CONNECT_INFO中。\n"
-    connect_info
-    
-    shuru "[提示]: 填写文件CONNECT_INFO,我是否已填写完成，是否继续? 输入Y/n  " flag
-    ifexit $flag
-    
-    echo "选择执行以下步骤"
-    echo "(1)安装mydumper myloader"
-    echo "(2)收集源库统计信息"
-    echo "(3)dump源库数据"
-    echo "(4)用户和权限验证"
-    echo "(5)表文件验证"
-    echo "(6)恢复数据到新库"
-    echo "(7)收集新的库到统计信息"
-    echo "(8)选择搭建从目标库到源库到主从关系"
-    echo "(9)检查主从复制数据同步状态"
-    echo "(10)预估剩余追平数据的时间"
-    shuru "[提示]: 输入步骤编号或退出。 输入编号(必须输入数字)/n(or input 'n' to exit)" flagnum
-    if [ $flagnum -gt 0 ] 2>/dev/null
-    then
-	    echo "是数字！">>/dev/null
-    else
-	    echo "输入不符合规则 exit"
-        exit 0
-    fi
+function main() {
+  echo -e "工具名称: qfusion-dts工具 \nversion: v2.0 \nauther: hao.chen@woqutech.com\n适用版本 mysql5.6-->5.7-->8.0之间的同版本或者升级版本上云,暂不支持降级上云(降级？这不是愚蠢吗？)"
+  echo -e "将源库目标库的连接信息,参考CONNECT_INFO文件中的参数格式，填写到配置文件CONNECT_INFO中。\n"
+  connect_info
 
-for((i=$flagnum;i<=10;i++));  
-do
+  shuru "[提示]: 填写文件CONNECT_INFO,我是否已填写完成，是否继续? 输入Y/n  " flag
+  ifexit $flag
+
+  echo "选择执行以下步骤"
+  echo "(1)安装mydumper myloader"
+  echo "(2)收集源库统计信息"
+  echo "(3)dump源库数据"
+  echo "(4)用户和权限验证"
+  echo "(5)表文件验证"
+  echo "(6)恢复数据到新库"
+  echo "(7)收集新的库到统计信息"
+  echo "(8)选择搭建从目标库到源库到主从关系"
+  echo "(9)检查主从复制数据同步状态"
+  echo "(10)预估剩余追平数据的时间"
+  shuru "[提示]: 输入步骤编号或退出。 输入编号(必须输入数字)/n(or input 'n' to exit)" flagnum
+  if [ $flagnum -gt 0 ] 2>/dev/null; then
+    echo "是数字！" >>/dev/null
+  else
+    echo "输入不符合规则 exit"
+    exit 0
+  fi
+
+  for ((i = $flagnum; i <= 10; i++)); do
     case ${i} in
-        1)
-        install
-        ;;
-        2)
-        collectvar
-        collectsrcVersion
-        collectsrc
-        ;;
-        3)
-        dump
-        ;;
-        4)
-        userauth
-        ;;
-        5)
-        setdstsqlmode
-        mycheck
-        ;;
-        6)
-        loader
-        ;;
-        7)
-        collectdst
-        ;;
-        8)
-        MS
-        ;;
-        9)
-        MS_STATUS
-        ;;
-        10)
-        calculate_ms_time
-        ;;
+    1)
+      install
+      ;;
+    2)
+      test_conn
+      collectvar
+      collectsrcVersion
+      collectsrc
+      ;;
+    3)
+      dump
+      ;;
+    4)
+      userauth
+      ;;
+    5)
+      setdstsqlmode
+      mycheck
+      ;;
+    6)
+      loader
+      ;;
+    7)
+      collectdst
+      ;;
+    8)
+      MS
+      ;;
+    9)
+      MS_STATUS
+      ;;
+    10)
+      calculate_ms_time
+      ;;
     esac
-done
-    
-}
+  done
 
+}
 
 main
+
+
+

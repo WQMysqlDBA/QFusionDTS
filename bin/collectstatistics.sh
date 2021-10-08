@@ -20,7 +20,7 @@ if [ ! -d "../dstdb_info" ]; then
 fi
 
 
-ARGS=`getopt -a -o  h:u:p:P:r:  --long  host:,user:,passwd:,port:,role:,help  -n $0 -- "$@"` 
+ARGS=`getopt -a -o  h:u:p:P:r:v1:v2:  --long  host:,user:,passwd:,port:,role:,srcver:,dstver:,help  -n $0 -- "$@"` 
 
 eval set -- "${ARGS}" 
 
@@ -48,8 +48,16 @@ do
                 role="$2"
                 shift
                 ;;
+        --srcver)
+                srcversion="$2"
+                shift
+                ;;
+        --dstver)
+                dstversion="$2"
+                shift
+                ;;
         --help)
-                echo -e "bash $0 \n -h|--host [ip/hostname] \n -u|--user [username] \n -p|--passwd [password] \n -P|--port [PORT] \n -r|--role [src/dst]"
+                echo -e "bash $0 \n -h|--host [ip/hostname] \n -u|--user [username] \n -p|--passwd [password] \n -P|--port [PORT] \n -r|--role [src/dst] --srcver  --dstver"
                 shift
                 ;;
         --)  
@@ -94,8 +102,11 @@ user_file="../$role_flag/user_file"
 privilege_file="../$role_flag/privilege_file"
 
 
+
+
 echo -e "## 数据库连接信息: \n"
 echo -e "username: $username \npassword: $passwd \nhost: $host \nport: $port"
+
 ##数据库链接
 mysql_conn="mysql -u$username -p$passwd -h$host -P$port"
 $mysql_conn -e "\s">/dev/null 2>&1
@@ -103,6 +114,7 @@ if [ $? -ne 0 ];then
     echo "[Error]: ......数据库链接失败"
     exit 0
 fi
+
 
 
 
@@ -156,7 +168,7 @@ done
 echo -e "\033[32m ###### VIEW ######\033[0m" 
 cat $view_info|column -t |grep -v TABLE_NAME
 
-sleep 1
+# sleep 1
 
 
 ## proc && function
@@ -178,7 +190,7 @@ cat $proc_info|grep -v "Db"|awk '{print $1 "    " $2 "    " $4}' |column -t
 echo -e "\033[32m ###### FUNCTION ######\033[0m" 
 cat $func_info|grep -v "Db"|awk '{print $1 "    " $2 "    " $4}' |column -t
 
-sleep 1
+# sleep 1
 
 
 
@@ -218,25 +230,41 @@ echo -e "\033[32m ###### TRIGGER ######\033[0m"
 cat $trigger_info|column -t|grep -v TRIGGER_SCHEMA
 
 
-sleep 1
+# sleep 1
 
 
 ##user
 echo -e "$green ###### User ###### $default"
 # user_sql="select concat('create user ',\"'\",user,\"'\",'@',\"'\",host,\"'\",' identified by password ',\"'\",authentication_string,\"';\") as CREATE_USER_SQL from mysql.user;"
 # cat a |grep -E 'user.*host同时含有这俩字段的行
-user_sql="select concat(\"'\",user,\"'\",'@',\"'\",host,\"'\") as MYSQL_USER_INFO from mysql.user;"
+user_sql="select concat(\"'\",user,\"'\",'@',\"'\",host,\"'\") as MYSQL_USER_INFO from mysql.user where user not in ('root','mysql.session','mysql.sys','mysql.infoschema','repl','qfsys','heartbeat')"
 cat /dev/null >$user_file
 cat /dev/null >$privilege_file
-DB_user=$($mysql_conn -e "$user_sql" |grep -v MYSQL_USER_INFO|grep -Ev "qfsys|root|repl|heartbeat|mysql." )
-for i in $DB_user
+for i in $($mysql_conn -e "select CONCAT(user,'@', \"'\",host,\"'\") as USER_AND_HOST from mysql.user where user not in ('root','mysql.session','mysql.sys','mysql.infoschema','repl','qfsys','heartbeat')"|grep -v USER_AND_HOST)
 do
-$mysql_conn -e "show create user $i"|grep -v "CREATE USER for">> $user_file
-$mysql_conn -e "show grants for $i"|grep -v "Grants for">>$privilege_file
+    echo "DROP USER IF EXISTS $i" >$user_file
 done
+
+
+
+###### mysql 5.7 8.0 支持如下语法 ###### 
+
+if [ "$srcversion" == "5.6" ];then
+    user_sql="select concat('create user ',\"'\",user,\"'\",'@',\"'\",host,\"'\",' identified by password ',\"'\",Password,\"';\") as CREATE_USER_SQL from mysql.user where user not in ('root','mysql.session','mysql.sys','mysql.infoschema','repl','qfsys','heartbeat');"
+    $mysql_conn -e "$user_sql"|grep -v CREATE_USER_SQL >> $user_file
+else
+    DB_user=$($mysql_conn -e "$user_sql" |grep -v MYSQL_USER_INFO|grep -Ev "qfsys|root|repl|heartbeat|mysql." )
+    for i in $DB_user
+    do
+        $mysql_conn -e "show create user $i"|grep -v "CREATE USER for">> $user_file
+        $mysql_conn -e "show grants for $i"|grep -v "Grants for">>$privilege_file
+    done
+fi
+
 echo "flush privileges">> $user_file
 sed -i "s/$/;/g" $user_file
 echo -e "$yello[Info]: $default用户文件请查看文件 $user_file"
+
 
 # ##privilege
 # echo -e "$green ###### Privilege ###### $default"
@@ -254,7 +282,7 @@ echo "flush privileges">> $privilege_file
 sed -i "s/$/;/g" $privilege_file
 echo -e "$yello[Info]: $default 用户权限文件请查看文件 $privilege_file"
 
-sleep 1
+# sleep 1
 ## 执行备份建议
 cpu_num=$(cat /proc/cpuinfo |grep processor|wc -l)
 let dump_thread=$cpu_num/2
@@ -265,6 +293,4 @@ if [ "$role" == "src" ];then
     echo -e "$yello[Info]: $default 2、源库统计数据信息收集完成,稍后执行以下命令往目的库写入数据。\n " #bash mycheck.sh -h [*目标库ip(别搞错了)] -u -p -P"
     echo -e "$yello[Info]: $default 非系统库包括: $db,库名称存放在 SrcdbName 文件中。"
 fi
-
-
 
